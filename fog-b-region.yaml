@@ -1,0 +1,25 @@
+net-app-name: thirai-app-net
+net-db-name: thirai-db-net
+net-dmz-name: dmz-net
+
+subnet-app-name: thirai-app-subnet
+subnet-db-name: thirai-db-subnet
+# subnet-dmz-name: thirai-dmz-subnet
+
+subnet-app-addr: '10.0.98.0/24'
+subnet-db-addr: '10.0.96.0/24'
+# subnet-dmz-addr: '10.0.95.0/24'
+
+ext-router-name: 'Ext-Router'
+ext-net-name: 'Ext-Net'
+
+image-name: 'centos-base'
+key-name: 'hpwork01_key'
+flavor-id: 100
+instance-lb: 'thirai-lb01'
+instance-web-01: 'thirai-web01'
+instance-web-02: 'thirai-web02'
+instance-app: 'thirai-app01'
+instance-db: 'thirai-db01'
+
+floatingip: '15.126.208.82'
