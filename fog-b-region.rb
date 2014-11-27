@@ -1,4 +1,11 @@
 #!/usr/bin/env ruby
+#
+# OpenStack 書籍のためのサンプルコード
+# シナリオ
+# * SNSアプリに付加集中
+# * 緊急でAPP,DBネットワークを新設
+# * そこにWebx2、LBx1, DBx1のサーバ作成
+# * Chefでミドルウェア・アプリをデプロイ
 
 require './connect.rb'
 require 'yaml'
