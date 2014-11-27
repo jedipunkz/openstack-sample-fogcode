@@ -4,11 +4,9 @@ net-dmz-name: dmz-net
 
 subnet-app-name: thirai-app-subnet
 subnet-db-name: thirai-db-subnet
-# subnet-dmz-name: thirai-dmz-subnet
 
 subnet-app-addr: '10.0.98.0/24'
 subnet-db-addr: '10.0.96.0/24'
-# subnet-dmz-addr: '10.0.95.0/24'
 
 ext-router-name: 'Ext-Router'
 ext-net-name: 'Ext-Net'
@@ -23,3 +21,10 @@ instance-app: 'thirai-app01'
 instance-db: 'thirai-db01'
 
 floatingip: '15.126.208.82'
+sg-cidr: '10.0.0.0/16'
+
+sg-all-from-console: 'sg-all-from-console'
+sg-all-from-app-net: 'sg-all-from-app-net'
+sg-all-from-dbs-net: 'sg-all-from-dbs-net'
+sg-web-from-internet: 'sg-web-from-internet'
+
