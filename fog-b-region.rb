@@ -3,12 +3,14 @@
 require 'fog'
 require 'yaml'
 
-# aws = Fog::Compute.new({
-#   :provider              => 'AWS',
-#   :aws_access_key_id     => '',
-#   :aws_secret_access_key => '',
-#   :region                => 'ap-northeast-1'
-# })
+platform = ARGV[0]
+
+$aws = Fog::Compute.new({
+  :provider              => 'AWS',
+  :aws_access_key_id     => '',
+  :aws_secret_access_key => '',
+  :region                => 'ap-northeast-1'
+})
 
 @opstnet = Fog::Network.new({
     :provider            => 'openstack',
@@ -30,7 +32,7 @@ $opst = Fog::Compute.new({
     :connection_options  => {}
 })
 
-
+# openstack
 config               = YAML.load_file("./fog-b-region.yaml")
 app_net_name         = config['net-app-name']
 db_net_name          = config['net-db-name']
@@ -57,6 +59,18 @@ sg_all_from_console  = config['sg-all-from-console']
 sg_all_from_app_net  = config['sg-all-from-app-net']
 sg_all_from_dbs_net  = config['sg-all-from-dbs-net']
 sg_web_from_internet = config['sg-web-from-internet']
+
+# aws
+instance_lb_aws      = config['instance-lb-aws']
+instance_web01_aws   = config['instance-web-01-aws']
+instance_web02_aws   = config['instance-web-02-aws']
+instance_app_aws     = config['instance-app-aws']
+instance_db_aws      = config['instance-db-aws']
+flavor_id_aws        = config['flavor-id-aws']
+image_id_aws         = config['image-id-aws']
+key_name_aws         = config['key-name-aws']
+sg_aws               = config['sg-aws']
+
 
 def find_first(resources, name)
   id_list = []
@@ -88,13 +102,6 @@ class Cloud
       elsif args[5] == 'app' then nics = $nics_app
       elsif args[5] == 'db' then nics = $nics_db end
       availability_zone = args[6]
-      # p name
-      # p flavor_id
-      # p image_id
-      # p key_name
-      # p availability_zone
-      # p security_groups
-      # p nics
       $opst.servers.create(
         :name => name,
         :flavor_ref => flavor_id.to_i,
@@ -111,7 +118,7 @@ class Cloud
       key_name = args[3]
       security_groups = 'default'
       $aws.servers.create(
-        :name => name,
+        :tags => {'Name' => name},
         :flavor_id => flavor_id,
         :image_id => image_id,
         :key_name => key_name,
@@ -121,37 +128,50 @@ class Cloud
   end
 end
 
-# create app_net
-@opstnet.create_network({:name => app_net_name})
-@opstnet.create_subnet(find_first(@opstnet.networks, app_net_name),
-                      app_subnet_addr, 4, {:name => app_subnet_name, :gateway_ip => 'none'})
-# create db_net
-@opstnet.create_network({:name => db_net_name})
-@opstnet.create_subnet(find_first(@opstnet.networks, db_net_name),
-                      db_subnet_addr, 4, {:name => db_subnet_name, :gateway_ip => 'none'})
+if platform == 'openstack' then
+  # create app_net
+  @opstnet.create_network({:name => app_net_name})
+  @opstnet.create_subnet(find_first(@opstnet.networks, app_net_name),
+                        app_subnet_addr, 4, {:name => app_subnet_name, :gateway_ip => 'none'})
+  # create db_net
+  @opstnet.create_network({:name => db_net_name})
+  @opstnet.create_subnet(find_first(@opstnet.networks, db_net_name),
+                        db_subnet_addr, 4, {:name => db_subnet_name, :gateway_ip => 'none'})
 
-# # add rules to security groups
-app_sg_id = find_sg_id('sg-all-from-app-net')
-$opst.create_security_group_rule(app_sg_id, 'tcp', '1', '65535', sg_cidr)
-$opst.create_security_group_rule(app_sg_id, 'icmp', '-1', '-1', sg_cidr)
-dbs_sg_id = find_sg_id('sg-all-from-dbs-net')
-$opst.create_security_group_rule(dbs_sg_id, 'tcp', '1', '65535', sg_cidr)
-$opst.create_security_group_rule(dbs_sg_id, 'icmp', '-1', '-1', sg_cidr)
+  # # add rules to security groups
+  app_sg_id = find_sg_id('sg-all-from-app-net')
+  $opst.create_security_group_rule(app_sg_id, 'tcp', '1', '65535', sg_cidr)
+  $opst.create_security_group_rule(app_sg_id, 'icmp', '-1', '-1', sg_cidr)
+  dbs_sg_id = find_sg_id('sg-all-from-dbs-net')
+  $opst.create_security_group_rule(dbs_sg_id, 'tcp', '1', '65535', sg_cidr)
+  $opst.create_security_group_rule(dbs_sg_id, 'icmp', '-1', '-1', sg_cidr)
 
-$sg_web = [sg_all_from_console, sg_all_from_app_net, sg_web_from_internet]
-$sg_app = [sg_all_from_console, sg_all_from_app_net, sg_all_from_dbs_net]
-$sg_db  = [sg_all_from_console, sg_all_from_dbs_net]
-$nics_web = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
-          {:net_id => find_first(@opstnet.networks, app_net_name)}]
-$nics_app = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
-          {:net_id => find_first(@opstnet.networks, app_net_name)},
-          {:net_id => find_first(@opstnet.networks, db_net_name)}]
-$nics_db  = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
-          {:net_id => find_first(@opstnet.networks, db_net_name)}]
+  $sg_web = [sg_all_from_console, sg_all_from_app_net, sg_web_from_internet]
+  $sg_app = [sg_all_from_console, sg_all_from_app_net, sg_all_from_dbs_net]
+  $sg_db  = [sg_all_from_console, sg_all_from_dbs_net]
+  $nics_web = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
+            {:net_id => find_first(@opstnet.networks, app_net_name)}]
+  $nics_app = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
+            {:net_id => find_first(@opstnet.networks, app_net_name)},
+            {:net_id => find_first(@opstnet.networks, db_net_name)}]
+  $nics_db  = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
+            {:net_id => find_first(@opstnet.networks, db_net_name)}]
 
-# create web instance
-Cloud.new().create('OpenStack', instance_lb, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
-Cloud.new().create('OpenStack', instance_web01, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
-Cloud.new().create('OpenStack', instance_web02, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
-Cloud.new().create('OpenStack', instance_app, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'app', 'app', 'az1')
-Cloud.new().create('OpenStack', instance_db, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'db', 'db', 'az1')
+  # create web instance
+  Cloud.new().create('OpenStack', instance_lb, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
+  Cloud.new().create('OpenStack', instance_web01, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
+  Cloud.new().create('OpenStack', instance_web02, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
+  Cloud.new().create('OpenStack', instance_app, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'app', 'app', 'az1')
+  Cloud.new().create('OpenStack', instance_db, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'db', 'db', 'az1')
+  # associate floating ip
+  #$opst.associate_address(find_first($opst.servers, instance_lb), floatingip)
+elsif platform == 'aws' then
+  Cloud.new().create('AWS', instance_lb_aws, flavor_id_aws, image_id_aws, key_name_aws, sg_aws)
+  Cloud.new().create('AWS', instance_web01_aws, flavor_id_aws, image_id_aws, key_name_aws, sg_aws)
+  Cloud.new().create('AWS', instance_web02_aws, flavor_id_aws, image_id_aws, key_name_aws, sg_aws)
+  Cloud.new().create('AWS', instance_app_aws, flavor_id_aws, image_id_aws, key_name_aws, sg_aws)
+  Cloud.new().create('AWS', instance_db_aws, flavor_id_aws, image_id_aws, key_name_aws, sg_aws)
+else
+  p "platform must be 'openstack' or 'aws'."
+  exit 1
+end
