@@ -1,7 +1,35 @@
 #!/usr/bin/env ruby
 
-require './connect.rb'
+require 'fog'
 require 'yaml'
+
+# aws = Fog::Compute.new({
+#   :provider              => 'AWS',
+#   :aws_access_key_id     => '',
+#   :aws_secret_access_key => '',
+#   :region                => 'ap-northeast-1'
+# })
+
+@opstnet = Fog::Network.new({
+    :provider            => 'openstack',
+    :openstack_auth_url  => 'https://region-b.geo-1.identity.hpcloudsvc.com:35357/v2.0/tokens',
+    :openstack_username  => '',
+    :openstack_tenant    => 'JOSUG',
+    :openstack_api_key   => '',
+    :openstack_region    => 'region-b.geo-1',
+    :connection_options  => {}
+})
+
+$opst = Fog::Compute.new({
+    :provider            => 'openstack',
+    :openstack_auth_url  => 'https://region-b.geo-1.identity.hpcloudsvc.com:35357/v2.0/tokens',
+    :openstack_username  => '',
+    :openstack_tenant    => 'JOSUG',
+    :openstack_api_key   => '',
+    :openstack_region    => 'region-b.geo-1',
+    :connection_options  => {}
+})
+
 
 config               = YAML.load_file("./fog-b-region.yaml")
 app_net_name         = config['net-app-name']
@@ -39,23 +67,12 @@ def find_first(resources, name)
 end
 
 def find_sg_id(name)
-  $conn.security_groups.all.each do |x|
+  $opst.security_groups.all.each do |x|
     if x.name == name
       return x.id
     end
   end
 end
-
-$sg_web = [sg_all_from_console, sg_all_from_app_net, sg_web_from_internet]
-$sg_app = [sg_all_from_console, sg_all_from_app_net, sg_all_from_dbs_net]
-$sg_db  = [sg_all_from_console, sg_all_from_dbs_net]
-$nics_web = [{:net_id => find_first($netconn.networks, dmz_net_name)},
-          {:net_id => find_first($netconn.networks, app_net_name)}]
-$nics_app = [{:net_id => find_first($netconn.networks, dmz_net_name)},
-          {:net_id => find_first($netconn.networks, app_net_name)},
-          {:net_id => find_first($netconn.networks, db_net_name)}]
-$nics_db  = [{:net_id => find_first($netconn.networks, dmz_net_name)},
-          {:net_id => find_first($netconn.networks, db_net_name)}]
 
 class Cloud
   def create(cloudname, *args)
@@ -71,7 +88,14 @@ class Cloud
       elsif args[5] == 'app' then nics = $nics_app
       elsif args[5] == 'db' then nics = $nics_db end
       availability_zone = args[6]
-      $conn.servers.create(
+      # p name
+      # p flavor_id
+      # p image_id
+      # p key_name
+      # p availability_zone
+      # p security_groups
+      # p nics
+      $opst.servers.create(
         :name => name,
         :flavor_ref => flavor_id.to_i,
         :image_ref => image_id,
@@ -98,27 +122,36 @@ class Cloud
 end
 
 # create app_net
-$netconn.create_network({:name => app_net_name})
-$netconn.create_subnet(find_first($netconn.networks, app_net_name),
+@opstnet.create_network({:name => app_net_name})
+@opstnet.create_subnet(find_first(@opstnet.networks, app_net_name),
                       app_subnet_addr, 4, {:name => app_subnet_name, :gateway_ip => 'none'})
 # create db_net
-$netconn.create_network({:name => db_net_name})
-$netconn.create_subnet(find_first($netconn.networks, db_net_name),
+@opstnet.create_network({:name => db_net_name})
+@opstnet.create_subnet(find_first(@opstnet.networks, db_net_name),
                       db_subnet_addr, 4, {:name => db_subnet_name, :gateway_ip => 'none'})
 
 # # add rules to security groups
 app_sg_id = find_sg_id('sg-all-from-app-net')
-$conn.create_security_group_rule(app_sg_id, 'tcp', '1', '65535', sg_cidr)
-$conn.create_security_group_rule(app_sg_id, 'icmp', '-1', '-1', sg_cidr)
+$opst.create_security_group_rule(app_sg_id, 'tcp', '1', '65535', sg_cidr)
+$opst.create_security_group_rule(app_sg_id, 'icmp', '-1', '-1', sg_cidr)
 dbs_sg_id = find_sg_id('sg-all-from-dbs-net')
-$conn.create_security_group_rule(dbs_sg_id, 'tcp', '1', '65535', sg_cidr)
-$conn.create_security_group_rule(dbs_sg_id, 'icmp', '-1', '-1', sg_cidr)
+$opst.create_security_group_rule(dbs_sg_id, 'tcp', '1', '65535', sg_cidr)
+$opst.create_security_group_rule(dbs_sg_id, 'icmp', '-1', '-1', sg_cidr)
 
-#sleep(10)
+$sg_web = [sg_all_from_console, sg_all_from_app_net, sg_web_from_internet]
+$sg_app = [sg_all_from_console, sg_all_from_app_net, sg_all_from_dbs_net]
+$sg_db  = [sg_all_from_console, sg_all_from_dbs_net]
+$nics_web = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
+          {:net_id => find_first(@opstnet.networks, app_net_name)}]
+$nics_app = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
+          {:net_id => find_first(@opstnet.networks, app_net_name)},
+          {:net_id => find_first(@opstnet.networks, db_net_name)}]
+$nics_db  = [{:net_id => find_first(@opstnet.networks, dmz_net_name)},
+          {:net_id => find_first(@opstnet.networks, db_net_name)}]
 
 # create web instance
-Cloud.new().create('OpenStack', instance_lb, flavor_id, find_first($conn.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
-Cloud.new().create('OpenStack', instance_web01, flavor_id, find_first($conn.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
-Cloud.new().create('OpenStack', instance_web02, flavor_id, find_first($conn.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
-Cloud.new().create('OpenStack', instance_app, flavor_id, find_first($conn.images, image_name), 'hpwork01_key', 'app', 'app', 'az1')
-Cloud.new().create('OpenStack', instance_db, flavor_id, find_first($conn.images, image_name), 'hpwork01_key', 'db', 'db', 'az1')
+Cloud.new().create('OpenStack', instance_lb, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
+Cloud.new().create('OpenStack', instance_web01, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
+Cloud.new().create('OpenStack', instance_web02, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'web', 'web', 'az1')
+Cloud.new().create('OpenStack', instance_app, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'app', 'app', 'az1')
+Cloud.new().create('OpenStack', instance_db, flavor_id, find_first($opst.images, image_name), 'hpwork01_key', 'db', 'db', 'az1')
